@@ -1,30 +1,19 @@
--- Countries
-CREATE TABLE IF NOT EXISTS country (
-    country_id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE
-);
+-- Table: publishers -- Stores information about companies that publish books. CREATE TABLE IF NOT EXISTS bookstore.publishers ( publisher_id SERIAL PRIMARY KEY, name VARCHAR(150) NOT NULL, -- C5 country VARCHAR(100) NOT NULL, -- C5 founded_year SMALLINT NOT NULL, -- C5 website VARCHAR(255), CONSTRAINT uq_publisher_name UNIQUE (name) -- C4 );
 
--- Cities
-CREATE TABLE IF NOT EXISTS city (
-    city_id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    country_id BIGINT NOT NULL,
-    CONSTRAINT fk_city_country FOREIGN KEY (country_id) REFERENCES country(country_id)
-);
+-- Table: authors -- Biographical details for each book author. CREATE TABLE IF NOT EXISTS bookstore.authors ( author_id SERIAL PRIMARY KEY, first_name VARCHAR(100) NOT NULL, -- C5 last_name VARCHAR(100) NOT NULL, -- C5 birth_date DATE NOT NULL, -- C5 nationality VARCHAR(100) NOT NULL DEFAULT 'Unknown', gender VARCHAR(10) NOT NULL, -- C3, C5 bio TEXT, CONSTRAINT uq_author_name UNIQUE (first_name, last_name), -- C4 CONSTRAINT chk_author_gender CHECK (gender IN ('Male', 'Female', 'Other')) -- C3 );
 
--- Stations
-CREATE TABLE IF NOT EXISTS station (
-    station_id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    city_id BIGINT NOT NULL,
-    CONSTRAINT fk_station_city FOREIGN KEY (city_id) REFERENCES city(city_id)
-);
+-- Table: genres -- Classification labels that can be assigned to books. CREATE TABLE IF NOT EXISTS bookstore.genres ( genre_id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, -- C5 description TEXT, CONSTRAINT uq_genre_name UNIQUE (name) -- C4 );
 
--- Sensors
-CREATE TABLE IF NOT EXISTS sensor (
-    sensor_id BIGSERIAL PRIMARY KEY,
-    type VARCHAR(50) NOT NULL,
-    unit VARCHAR(20) NOT NULL,
-    station_id BIGINT NOT NULL,
-    CONSTRAINT fk_sensor_station FOREIGN KEY (station_id) REFERENCES station(station_id)
-);
+-- Table: books -- Central book catalogue with pricing, format, and stock data. CREATE TABLE IF NOT EXISTS bookstore.books ( book_id SERIAL PRIMARY KEY, title VARCHAR(255) NOT NULL, -- C5 isbn VARCHAR(20) NOT NULL, -- C4, C5 publisher_id INT NOT NULL, -- C5 publication_date DATE NOT NULL, -- C1, C5 price NUMERIC(10, 2) NOT NULL DEFAULT 9.99, -- C2 format VARCHAR(20) NOT NULL DEFAULT 'paperback', -- C3, C5 pages SMALLINT NOT NULL, -- C5 stock_quantity INT NOT NULL DEFAULT 0, -- C2 CONSTRAINT uq_book_isbn UNIQUE (isbn), -- C4 CONSTRAINT chk_book_pub_date CHECK (publication_date > '2000-01-01'), -- C1 CONSTRAINT chk_book_price CHECK (price >= 0), -- C2 CONSTRAINT chk_book_format CHECK (format IN ('paperback', 'hardcover', 'ebook')), -- C3 CONSTRAINT chk_book_stock CHECK (stock_quantity >= 0), -- C2 CONSTRAINT fk_book_publisher FOREIGN KEY (publisher_id) REFERENCES bookstore.publishers (publisher_id) ON UPDATE CASCADE ON DELETE RESTRICT );
+
+-- Table: book_authors [MANY-TO-MANY: books ↔ authors] -- Junction table linking each book to its author(s). CREATE TABLE IF NOT EXISTS bookstore.book_authors ( book_id INT NOT NULL, -- C5 author_id INT NOT NULL, -- C5 PRIMARY KEY (book_id, author_id), CONSTRAINT fk_ba_book FOREIGN KEY (book_id) REFERENCES bookstore.books (book_id) ON UPDATE CASCADE ON DELETE CASCADE, CONSTRAINT fk_ba_author FOREIGN KEY (author_id) REFERENCES bookstore.authors (author_id) ON UPDATE CASCADE ON DELETE CASCADE );
+
+-- Table: book_genres [MANY-TO-MANY: books ↔ genres] -- Junction table tagging each book with one or more genres. CREATE TABLE IF NOT EXISTS bookstore.book_genres ( book_id INT NOT NULL, -- C5 genre_id INT NOT NULL, -- C5 PRIMARY KEY (book_id, genre_id), CONSTRAINT fk_bg_book FOREIGN KEY (book_id) REFERENCES bookstore.books (book_id) ON UPDATE CASCADE ON DELETE CASCADE, CONSTRAINT fk_bg_genre FOREIGN KEY (genre_id) REFERENCES bookstore.genres (genre_id) ON UPDATE CASCADE ON DELETE CASCADE );
+
+-- Table: customers -- Registered users who can place orders and submit reviews. CREATE TABLE IF NOT EXISTS bookstore.customers ( customer_id SERIAL PRIMARY KEY, first_name VARCHAR(100) NOT NULL, -- C5 last_name VARCHAR(100) NOT NULL, -- C5 email VARCHAR(255) NOT NULL, -- C4, C5 phone VARCHAR(25), gender VARCHAR(10) NOT NULL DEFAULT 'Other', -- C3, C5 registration_date DATE NOT NULL DEFAULT CURRENT_DATE, -- C1, C5 birth_date DATE, CONSTRAINT uq_customer_email UNIQUE (email), -- C4 CONSTRAINT chk_customer_gender CHECK (gender IN ('Male', 'Female', 'Other')), -- C3 CONSTRAINT chk_cust_reg_date CHECK (registration_date > '2000-01-01') -- C1 );
+
+-- Table: orders -- A purchase transaction placed by a customer. CREATE TABLE IF NOT EXISTS bookstore.orders ( order_id SERIAL PRIMARY KEY, customer_id INT NOT NULL, -- C5 order_date DATE NOT NULL DEFAULT CURRENT_DATE, -- C1, C5 status VARCHAR(20) NOT NULL DEFAULT 'pending', -- C3, C5 total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00, -- C2, C5 shipping_address VARCHAR(500) NOT NULL, -- C5 CONSTRAINT chk_order_date CHECK (order_date > '2000-01-01'), -- C1 CONSTRAINT chk_order_status CHECK (status IN ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled')), -- C3 CONSTRAINT chk_order_total CHECK (total_amount >= 0), -- C2 CONSTRAINT fk_order_customer FOREIGN KEY (customer_id) REFERENCES bookstore.customers (customer_id) ON UPDATE CASCADE ON DELETE RESTRICT );
+
+-- Table: order_items -- Individual line items within an order. -- subtotal is a GENERATED ALWAYS AS column: quantity × unit_price. CREATE TABLE IF NOT EXISTS bookstore.order_items ( order_item_id SERIAL PRIMARY KEY, order_id INT NOT NULL, -- C5 book_id INT NOT NULL, -- C5 quantity INT NOT NULL DEFAULT 1, unit_price NUMERIC(10, 2) NOT NULL, -- C5 -- Derived column; value is computed automatically, never stored manually subtotal NUMERIC(12, 2) GENERATED ALWAYS AS (quantity * unit_price) STORED, CONSTRAINT uq_order_item UNIQUE (order_id, book_id), -- C4 CONSTRAINT chk_item_quantity CHECK (quantity > 0), -- C2 CONSTRAINT chk_item_unit_price CHECK (unit_price >= 0), -- C2 CONSTRAINT fk_item_order FOREIGN KEY (order_id) REFERENCES bookstore.orders (order_id) ON UPDATE CASCADE ON DELETE CASCADE, CONSTRAINT fk_item_book FOREIGN KEY (book_id) REFERENCES bookstore.books (book_id) ON UPDATE CASCADE ON DELETE RESTRICT );
+
+-- Table: reviews -- Star ratings and text comments left by customers for books. CREATE TABLE IF NOT EXISTS bookstore.reviews ( review_id SERIAL PRIMARY KEY, customer_id INT NOT NULL, -- C5 book_id INT NOT NULL, -- C5 rating SMALLINT NOT NULL, -- C2: 1–5 scale (non-negative measured value), C5 comment TEXT, review_date DATE NOT NULL DEFAULT CURRENT_DATE, -- C1, C5 CONSTRAINT uq_review UNIQUE (customer_id, book_id), -- C4: one review per customer-book pair CONSTRAINT chk_review_rating CHECK (rating BETWEEN 1 AND 5), -- C2 CONSTRAINT chk_review_date CHECK (review_date > '2000-01-01'), -- C1 CONSTRAINT fk_review_customer FOREIGN KEY (customer_id) REFERENCES bookstore.customers (customer_id) ON UPDATE CASCADE ON DELETE CASCADE, CONSTRAINT fk_review_book FOREIGN KEY (book_id) REFERENCES bookstore.books (book_id) ON UPDATE CASCADE ON DELETE CASCADE );
